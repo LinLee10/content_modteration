@@ -26,6 +26,20 @@ def test_hard_denylist_short_circuit():
     assert decision["rule_hits"] == ["denylist::kill"]
 
 
+def test_allowlist_and_denylist_use_regex_patterns():
+    engine = HybridModerationEngine(
+        overrides={"allowlist": [r"^ok$"], "denylist": [r"scam+mer?"]}
+    )
+
+    safe_decision = engine.moderate("OK")["decision"]
+    assert safe_decision["label"] == "safe"
+    assert "allowlist pattern: ^ok$" in safe_decision["reasons"]
+
+    harmful_decision = engine.moderate("This is a scammmmer alert")["decision"]
+    assert harmful_decision["label"] == "harmful"
+    assert "denylist pattern: scam+mer?" in harmful_decision["reasons"]
+
+
 def test_tie_margin_uses_edge_case_label():
     engine = HybridModerationEngine()
     ml_scores = {"spam": 0.4, "harmful": 0.38}

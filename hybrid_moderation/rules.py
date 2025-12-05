@@ -47,6 +47,10 @@ def _uppercase_ratio(text: str) -> float:
     return len(uppercase) / len(letters)
 
 
+def _compile_patterns(patterns: List[str]) -> List[re.Pattern[str]]:
+    return [re.compile(pattern, flags=re.IGNORECASE) for pattern in patterns]
+
+
 def evaluate_rules(text: str, config: Dict[str, Any], raw_text: Optional[str] = None) -> RuleResult:
     """Evaluate allow/deny lists, category patterns, and spam heuristics."""
 
@@ -55,31 +59,29 @@ def evaluate_rules(text: str, config: Dict[str, Any], raw_text: Optional[str] = 
     rule_hits: List[str] = []
     category_hits: List[Dict[str, Any]] = []
 
-    lower_text = text.lower()
-
-    # Hard allow list overrides everything.
-    for phrase in config.get("allowlist", []):
-        if phrase.lower() in lower_text:
+    # Hard allow list overrides everything (regex patterns).
+    for pattern in _compile_patterns(config.get("allowlist", [])):
+        if pattern.search(text):
             label_scores["safe"] = 1.0
-            reasons.append(f"allowlist phrase: {phrase}")
-            rule_hits.append(f"allowlist::{phrase}")
+            reasons.append(f"allowlist pattern: {pattern.pattern}")
+            rule_hits.append(f"allowlist::{pattern.pattern}")
             return RuleResult(label_scores, reasons, hard_label="safe", rule_hits=rule_hits, category_hits=category_hits)
 
-    # Hard deny list enforces harmful outcome.
-    for phrase in config.get("denylist", []):
-        if phrase.lower() in lower_text:
+    # Hard deny list enforces harmful outcome (regex patterns).
+    for pattern in _compile_patterns(config.get("denylist", [])):
+        if pattern.search(text):
             label_scores["harmful"] = 1.0
-            reasons.append(f"denylist phrase: {phrase}")
-            rule_hits.append(f"denylist::{phrase}")
+            reasons.append(f"denylist pattern: {pattern.pattern}")
+            rule_hits.append(f"denylist::{pattern.pattern}")
             return RuleResult(label_scores, reasons, hard_label="harmful", rule_hits=rule_hits, category_hits=category_hits)
 
     # Category regex patterns.
     for label, patterns in config.get("category_patterns", {}).items():
-        for pattern in patterns:
-            if re.search(pattern, text, flags=re.IGNORECASE):
+        for pattern in _compile_patterns(patterns):
+            if pattern.search(text):
                 label_scores[label] = max(label_scores[label], 0.8)
-                reasons.append(f"pattern matched for {label}: {pattern}")
-                category_hits.append({"label": label, "pattern": pattern})
+                reasons.append(f"pattern matched for {label}: {pattern.pattern}")
+                category_hits.append({"label": label, "pattern": pattern.pattern})
 
     # Spam heuristics
     spam_conf = config.get("spam", {})
